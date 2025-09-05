@@ -1,0 +1,68 @@
+name: Scrape TickerTrends → Supabase
+
+on:
+  # Run daily at 06:15 UTC (change as you like)
+  schedule:
+    - cron: '15 6 * * *'
+  # Allow manual runs
+  workflow_dispatch: {}
+
+concurrency:
+  group: scrape-tickertrends
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # ---------- Supabase (set these as Secrets) ----------
+      SUPABASE_HOST: ${{ secrets.SUPABASE_HOST }}
+      SUPABASE_PORT: ${{ secrets.SUPABASE_PORT }}        # usually 5432
+      SUPABASE_DB:   ${{ secrets.SUPABASE_DB }}
+      SUPABASE_USER: ${{ secrets.SUPABASE_USER }}
+      SUPABASE_PWD:  ${{ secrets.SUPABASE_PWD }}
+
+      # ---------- Scraper knobs (optional -> set as Org/Repo Variables) ----------
+      TT_BASE_URL:            ${{ vars.TT_BASE_URL || 'https://blog.tickertrends.io' }}
+      MAX_ARTICLES_PER_TAG:   ${{ vars.MAX_ARTICLES_PER_TAG || '40' }}
+      SCRAPE_TIMEOUT_SEC:     ${{ vars.SCRAPE_TIMEOUT_SEC || '20' }}
+      SCRAPE_UA:              ${{ vars.SCRAPE_UA || 'Mozilla/5.0 (compatible; TT-Scraper/1.0)' }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3'
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxml2-dev libcurl4-openssl-dev libssl-dev libpq-dev
+
+      - name: Install R dependencies (with cache)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::rvest
+            any::xml2
+            any::httr
+            any::dplyr
+            any::tidyr
+            any::purrr
+            any::stringr
+            any::lubridate
+            any::DBI
+            any::RPostgres
+          cache-version: 1
+
+      - name: Run scraper
+        run: |
+          Rscript scrape_tickertrends.R
+        # If your script lives in a subfolder, change to:
+        # run: Rscript scripts/scrape_tickertrends.R
